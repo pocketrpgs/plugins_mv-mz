@@ -1,10 +1,10 @@
 /*:
  * @target MZ
- * @plugindesc (Front View) Actor charset sprites in battle + formation/idle/facing/highlight + hit reactions + attack motion + shadow plate + important state icons with color pulse (fixed). v3.2.1
- * @author ChatGPT
+ * @plugindesc front view battle system
+ * @author Christopher Ross
  *
  * @help
- * FrontViewActorsCharsetBattle_v3_2_1.js
+ * FrontViewActorsCharsetBattle.js
  *
  * v3.2.1 adds/fixes:
  * - IMPORTANT state icons + color pulse (per actor)
