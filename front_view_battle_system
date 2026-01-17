@@ -1,0 +1,902 @@
+/*:
+ * @target MZ
+ * @plugindesc change front view battle system to allow custome front view from standard mz battle system
+ * @author Christopher Ross
+ *
+ * @help
+ * FrontViewActorsCharsetBattle.js
+ *
+ * - State icons above actors (Front View)
+ * - Filter icons to IMPORTANT state IDs only
+ * - Color pulse per state type (by state ID)
+ *
+ * Actor Notetags (Actor note):
+ *   <BattleCharName: Actor2>
+ *   <BattleCharIndex: 3>
+ *   <BattleFacing: 8>
+ *   <BattleScale: 1.20>
+ *   <BattleOffsetX: -10>
+ *   <BattleOffsetY: 6>
+ *
+ * Intended for Front View (Side View OFF).
+ *
+ * @param Anchor
+ * @type select
+ * @option BottomLeft
+ * @option BottomCenter
+ * @option BottomRight
+ * @option AboveStatusWindow
+ * @option Custom
+ * @default AboveStatusWindow
+ *
+ * @param CustomX
+ * @type number
+ * @min 0
+ * @default 120
+ *
+ * @param CustomY
+ * @type number
+ * @min 0
+ * @default 420
+ *
+ * @param Formation
+ * @type select
+ * @option Auto
+ * @option Line
+ * @option Column
+ * @option Grid
+ * @default Auto
+ *
+ * @param GridColumns
+ * @type number
+ * @min 1
+ * @default 2
+ *
+ * @param SpacingX
+ * @type number
+ * @min 0
+ * @default 90
+ *
+ * @param SpacingY
+ * @type number
+ * @min 0
+ * @default 60
+ *
+ * @param CenterAlign
+ * @type boolean
+ * @default true
+ *
+ * @param DefaultScale
+ * @type number
+ * @decimals 2
+ * @default 1.00
+ *
+ * @param FacingMode
+ * @type select
+ * @option Up
+ * @option Down
+ * @option Left
+ * @option Right
+ * @option TowardEnemy
+ * @option AwayFromEnemy
+ * @default Up
+ *
+ * @param IdleAnim
+ * @type boolean
+ * @default true
+ *
+ * @param IdleAnimSpeed
+ * @type number
+ * @min 1
+ * @default 18
+ *
+ * @param HighlightTint
+ * @type number
+ * @min 0
+ * @default 40
+ *
+ * @param HighlightBounce
+ * @type number
+ * @min 0
+ * @default 6
+ *
+ * @param AttackMoveY
+ * @text Attack Move Distance (Y)
+ * @type number
+ * @min 0
+ * @default 24
+ *
+ * @param AttackMoveFrames
+ * @text Attack Move Frames (one-way)
+ * @type number
+ * @min 1
+ * @default 10
+ *
+ * @param DamageFlashFrames
+ * @text Damage Flash Frames
+ * @type number
+ * @min 1
+ * @default 12
+ *
+ * @param DamageShakePower
+ * @text Damage Shake Power
+ * @type number
+ * @min 0
+ * @default 4
+ *
+ * @param DamageShakeFrames
+ * @text Damage Shake Frames
+ * @type number
+ * @min 1
+ * @default 14
+ *
+ * @param DeathFadeFrames
+ * @text Death Fade Frames
+ * @type number
+ * @min 1
+ * @default 30
+ *
+ * @param ShadowEnabled
+ * @text Shadow Enabled
+ * @type boolean
+ * @default true
+ *
+ * @param ShadowWidth
+ * @text Shadow Width
+ * @type number
+ * @min 8
+ * @default 52
+ *
+ * @param ShadowHeight
+ * @text Shadow Height
+ * @type number
+ * @min 4
+ * @default 18
+ *
+ * @param ShadowOpacity
+ * @text Shadow Opacity (0-255)
+ * @type number
+ * @min 0
+ * @max 255
+ * @default 130
+ *
+ * @param ShadowOffsetY
+ * @text Shadow Offset Y
+ * @type number
+ * @default -8
+ *
+ * @param ShowStateIcons
+ * @text Show State Icons
+ * @type boolean
+ * @default true
+ *
+ * @param StateIconOffsetX
+ * @text State Icon Offset X
+ * @type number
+ * @default 0
+ *
+ * @param StateIconOffsetY
+ * @text State Icon Offset Y
+ * @type number
+ * @default -56
+ *
+ * @param ImportantStateIds
+ * @text Important State IDs (comma list)
+ * @type string
+ * @default 4,8,10,12,13
+ * @desc Poison(4), Confusion(8), Sleep(10), Paralysis(12), Stun(13)
+ *
+ * @param StatePulseEnabled
+ * @text State Icon Color Pulse
+ * @type boolean
+ * @default true
+ *
+ * @param StatePulseMap
+ * @text State Pulse Map (ID:color)
+ * @type string
+ * @default 4:#00ff66,8:#aa66ff,10:#66aaff,12:#ffff66,13:#ffd200
+ * @desc Example: 4:#00ff66,13:#ffd200
+ *
+ * @param StatePulseSpeed
+ * @text State Pulse Speed
+ * @type number
+ * @min 1
+ * @default 18
+ *
+ * @param StatePulseStrength
+ * @text State Pulse Strength (0-255)
+ * @type number
+ * @min 0
+ * @max 255
+ * @default 90
+ */
+
+(() => {
+  "use strict";
+
+  const PLUGIN_NAME = document.currentScript.src.match(/([^/]+)\.js$/)[1];
+  const p = PluginManager.parameters(PLUGIN_NAME);
+
+  const ANCHOR = String(p.Anchor ?? "AboveStatusWindow");
+  const CUSTOM_X = Number(p.CustomX ?? 120);
+  const CUSTOM_Y = Number(p.CustomY ?? 420);
+
+  const FORMATION = String(p.Formation ?? "Auto");
+  const GRID_COLS = Math.max(1, Number(p.GridColumns ?? 2));
+  const SPX = Math.max(0, Number(p.SpacingX ?? 90));
+  const SPY = Math.max(0, Number(p.SpacingY ?? 60));
+  const CENTER_ALIGN = String(p.CenterAlign ?? "true") === "true";
+
+  const DEFAULT_SCALE = Number(p.DefaultScale ?? 1.0);
+
+  const FACING_MODE = String(p.FacingMode ?? "Up");
+  const IDLE_ANIM = String(p.IdleAnim ?? "true") === "true";
+  const IDLE_SPEED = Math.max(1, Number(p.IdleAnimSpeed ?? 18));
+
+  const H_TINT = Math.max(0, Number(p.HighlightTint ?? 40));
+  const H_BOUNCE = Math.max(0, Number(p.HighlightBounce ?? 6));
+
+  const ATTACK_MOVE_Y = Math.max(0, Number(p.AttackMoveY ?? 24));
+  const ATTACK_MOVE_FRAMES = Math.max(1, Number(p.AttackMoveFrames ?? 10));
+
+  const DMG_FLASH_FRAMES = Math.max(1, Number(p.DamageFlashFrames ?? 12));
+  const DMG_SHAKE_POWER = Math.max(0, Number(p.DamageShakePower ?? 4));
+  const DMG_SHAKE_FRAMES = Math.max(1, Number(p.DamageShakeFrames ?? 14));
+
+  const DEATH_FADE_FRAMES = Math.max(1, Number(p.DeathFadeFrames ?? 30));
+
+  // Shadow parameters
+  const SHADOW_ENABLED = String(p.ShadowEnabled ?? "true") === "true";
+  const SHADOW_W = Math.max(8, Number(p.ShadowWidth ?? 52));
+  const SHADOW_H = Math.max(4, Number(p.ShadowHeight ?? 18));
+  const SHADOW_OPACITY = Math.max(0, Math.min(255, Number(p.ShadowOpacity ?? 130)));
+  const SHADOW_Y = Number(p.ShadowOffsetY ?? -8);
+
+  // State icons + pulse
+  const SHOW_STATE_ICONS = String(p.ShowStateIcons ?? "true") === "true";
+  const STATE_ICON_OX = Number(p.StateIconOffsetX ?? 0);
+  const STATE_ICON_OY = Number(p.StateIconOffsetY ?? -56);
+
+  const IMPORTANT_STATE_IDS = String(p.ImportantStateIds ?? "")
+    .split(",")
+    .map(s => Number(String(s).trim()))
+    .filter(n => Number.isFinite(n) && n > 0);
+
+  const STATE_PULSE_ENABLED = String(p.StatePulseEnabled ?? "true") === "true";
+  const STATE_PULSE_SPEED = Math.max(1, Number(p.StatePulseSpeed ?? 18));
+  const STATE_PULSE_STRENGTH = Math.max(0, Math.min(255, Number(p.StatePulseStrength ?? 90)));
+
+  function parsePulseMap(text) {
+    const map = new Map();
+    const raw = String(text ?? "").trim();
+    if (!raw) return map;
+
+    for (const part of raw.split(",")) {
+      const [idStr, colorStrRaw] = part.split(":").map(s => (s ?? "").trim());
+      const id = Number(idStr);
+      const colorStr = (colorStrRaw || "").replace("#", "");
+      if (!Number.isFinite(id) || id <= 0) continue;
+      if (!/^[0-9a-fA-F]{6}$/.test(colorStr)) continue;
+
+      const r = parseInt(colorStr.slice(0, 2), 16);
+      const g = parseInt(colorStr.slice(2, 4), 16);
+      const b = parseInt(colorStr.slice(4, 6), 16);
+      map.set(id, { r, g, b });
+    }
+    return map;
+  }
+
+  const STATE_PULSE_MAP = parsePulseMap(p.StatePulseMap);
+
+  const DIR = { Down: 2, Left: 4, Right: 6, Up: 8 };
+
+  function clampDir(d) {
+    return d === 2 || d === 4 || d === 6 || d === 8 ? d : 8;
+  }
+
+  function parseNotetagNumber(note, tag, fallback) {
+    const re = new RegExp(`<${tag}\\s*:\\s*([\\-\\d\\.]+)\\s*>`, "i");
+    const m = note.match(re);
+    return m ? Number(m[1]) : fallback;
+  }
+
+  function parseNotetagString(note, tag, fallback) {
+    const re = new RegExp(`<${tag}\\s*:\\s*([^>]+)>`, "i");
+    const m = note.match(re);
+    return m ? String(m[1]).trim() : fallback;
+  }
+
+  function facingFromMode(mode) {
+    switch (mode) {
+      case "Down": return DIR.Down;
+      case "Left": return DIR.Left;
+      case "Right": return DIR.Right;
+      case "Up": return DIR.Up;
+      case "TowardEnemy": return DIR.Up;
+      case "AwayFromEnemy": return DIR.Down;
+      default: return DIR.Up;
+    }
+  }
+
+  // ---------------------------------------------------------
+  // IMPORTANT STATE ICON (only affects our battle sprites)
+  // ---------------------------------------------------------
+  class Sprite_ImportantStateIcon extends Sprite_StateIcon {
+    constructor() {
+      super();
+      this._currentStateIdForIcon = 0;
+      this._pulsePhase = 0;
+    }
+
+    updateIcon() {
+      const battler = this._battler;
+      if (!battler) {
+        this._iconIndex = 0;
+        this._currentStateIdForIcon = 0;
+        return;
+      }
+
+      const list = [];
+      for (const stateId of IMPORTANT_STATE_IDS) {
+        const st = $dataStates[stateId];
+        if (!st) continue;
+        if (battler.isStateAffected(stateId) && st.iconIndex > 0) {
+          list.push({ stateId, iconIndex: st.iconIndex });
+        }
+      }
+
+      if (list.length > 0) {
+        this._animationCount++;
+        if (this._animationCount >= this.animationWait()) {
+          this._animationCount = 0;
+          const item = list[this._animationIndex % list.length];
+          this._iconIndex = item.iconIndex;
+          this._currentStateIdForIcon = item.stateId;
+          this._animationIndex++;
+        }
+      } else {
+        this._iconIndex = 0;
+        this._currentStateIdForIcon = 0;
+      }
+    }
+
+    update() {
+      super.update();
+
+      if (!STATE_PULSE_ENABLED) {
+        this.setBlendColor([0, 0, 0, 0]);
+        return;
+      }
+
+      const stateId = this._currentStateIdForIcon || 0;
+      const col = STATE_PULSE_MAP.get(stateId);
+      if (!col || !this._iconIndex) {
+        this.setBlendColor([0, 0, 0, 0]);
+        return;
+      }
+
+      this._pulsePhase += (Math.PI * 2) / STATE_PULSE_SPEED;
+      const wave = (Math.sin(this._pulsePhase) + 1) / 2; // 0..1
+      const a = Math.floor(wave * STATE_PULSE_STRENGTH);
+      this.setBlendColor([col.r, col.g, col.b, a]);
+    }
+  }
+
+  // ---- Sprite: container + body charset sprite + shadow (under) + icon ----
+  class Sprite_ActorCharsetBattle extends Sprite {
+    constructor(actor) {
+      super();
+      this._actor = actor;
+
+      this._characterName = "";
+      this._characterIndex = 0;
+      this._isBigCharacter = false;
+
+      this._direction = clampDir(facingFromMode(FACING_MODE));
+      this._pattern = 1;
+      this._animTick = 0;
+
+      this._baseX = 0;
+      this._baseY = 0;
+      this._offsetX = 0;
+      this._offsetY = 0;
+      this._baseScale = DEFAULT_SCALE;
+
+      this._highlighted = false;
+      this._highlightPhase = 0;
+
+      // Motion state
+      this._moveActive = false;
+      this._moveFrom = { x: 0, y: 0 };
+      this._moveTo = { x: 0, y: 0 };
+      this._moveFrames = 0;
+      this._moveTotal = 0;
+      this._moveOnDone = null;
+
+      // Damage flash
+      this._flashFrames = 0;
+
+      // Shake
+      this._shakeFrames = 0;
+      this._shakePower = 0;
+      this._shakePhase = 0;
+
+      // Death fade
+      this._fadeFrames = 0;
+      this._fadeTotal = 0;
+
+      // Container only (no visible bitmap)
+      this.bitmap = new Bitmap(1, 1);
+      this.setFrame(0, 0, 0, 0);
+
+      // Shadow behind body
+      this._shadow = new Sprite();
+      this._shadow.anchor.set(0.5, 0.5);
+      this._shadow.opacity = SHADOW_OPACITY;
+      this._shadow.y = SHADOW_Y;
+      this._shadow.visible = SHADOW_ENABLED;
+      this._shadow.bitmap = this._createShadowBitmap();
+      this.addChildAt(this._shadow, 0);
+
+      // Body (actual charset)
+      this._body = new Sprite();
+      this._body.anchor.set(0.5, 1.0);
+      this.addChild(this._body);
+
+      // State Icon (important only)
+      this._stateIcon = new Sprite_ImportantStateIcon();
+      this._stateIcon.x = STATE_ICON_OX;
+      this._stateIcon.y = STATE_ICON_OY;
+      this._stateIcon.visible = SHOW_STATE_ICONS;
+      this._stateIcon.setup(this._actor);
+      this.addChild(this._stateIcon);
+
+      this.applyActorOverrides();
+      this.refreshBitmap();
+    }
+
+    actor() { return this._actor; }
+
+    _createShadowBitmap() {
+      const w = SHADOW_W;
+      const h = SHADOW_H;
+      const bmp = new Bitmap(w, h);
+      const ctx = bmp.context;
+
+      ctx.save();
+      ctx.clearRect(0, 0, w, h);
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = "black";
+      ctx.beginPath();
+      ctx.ellipse(w / 2, h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      bmp.baseTexture.update();
+      return bmp;
+    }
+
+    applyActorOverrides() {
+      const a = this._actor;
+      const note = a?.actor()?.note ?? "";
+
+      const nName = parseNotetagString(note, "BattleCharName", "");
+      const nIndex = parseNotetagNumber(note, "BattleCharIndex", NaN);
+
+      this._overrideCharName = nName || "";
+      this._overrideCharIndex = Number.isFinite(nIndex) ? Math.floor(nIndex) : null;
+
+      const face = parseNotetagNumber(note, "BattleFacing", NaN);
+      if (Number.isFinite(face)) this._direction = clampDir(Math.floor(face));
+
+      const sc = parseNotetagNumber(note, "BattleScale", NaN);
+      if (Number.isFinite(sc)) this._baseScale = sc;
+
+      this._offsetX = parseNotetagNumber(note, "BattleOffsetX", 0);
+      this._offsetY = parseNotetagNumber(note, "BattleOffsetY", 0);
+
+      this._body.scale.set(this._baseScale, this._baseScale);
+      this._shadow.scale.set(this._baseScale, this._baseScale);
+    }
+
+    setBasePosition(x, y) {
+      this._baseX = x;
+      this._baseY = y;
+      this._applyBasePosition();
+    }
+
+    _applyBasePosition() {
+      this.x = this._baseX + this._offsetX;
+      this.y = this._baseY + this._offsetY;
+    }
+
+    refreshBitmap() {
+      const a = this._actor;
+      if (!a) return;
+
+      const name = this._overrideCharName || a.characterName();
+      const index = this._overrideCharIndex != null ? this._overrideCharIndex : a.characterIndex();
+
+      this._characterName = name;
+      this._characterIndex = index;
+
+      if (name) {
+        this._body.bitmap = ImageManager.loadCharacter(name);
+        this._isBigCharacter = ImageManager.isBigCharacter(name);
+        this._needsFrameUpdate = true;
+      } else {
+        this._body.bitmap = null;
+      }
+    }
+
+    // --- External triggers ---
+    playDamageReaction() {
+      this._flashFrames = DMG_FLASH_FRAMES;
+      this._shakeFrames = DMG_SHAKE_FRAMES;
+      this._shakePower = DMG_SHAKE_POWER;
+      this._shakePhase = 0;
+    }
+
+    playDeathFade() {
+      if (this._fadeFrames > 0) return;
+      this._fadeTotal = DEATH_FADE_FRAMES;
+      this._fadeFrames = DEATH_FADE_FRAMES;
+    }
+
+    playAttackHop() {
+      const start = { x: this._baseX + this._offsetX, y: this._baseY + this._offsetY };
+      const up = { x: start.x, y: start.y - ATTACK_MOVE_Y };
+
+      this._startMove(start, up, ATTACK_MOVE_FRAMES, () => {
+        this._startMove(up, start, ATTACK_MOVE_FRAMES, null);
+      });
+    }
+
+    _startMove(from, to, frames, onDone) {
+      this._moveActive = true;
+      this._moveFrom = { x: from.x, y: from.y };
+      this._moveTo = { x: to.x, y: to.y };
+      this._moveTotal = Math.max(1, frames);
+      this._moveFrames = this._moveTotal;
+      this._moveOnDone = onDone;
+    }
+
+    setHighlighted(on) {
+      this._highlighted = !!on;
+      if (!on) this._highlightPhase = 0;
+    }
+
+    // --- Update loop ---
+    update() {
+      super.update();
+      const a = this._actor;
+      if (!a) return;
+
+      const nameNow = this._overrideCharName || a.characterName();
+      const idxNow = this._overrideCharIndex != null ? this._overrideCharIndex : a.characterIndex();
+      if (nameNow !== this._characterName || idxNow !== this._characterIndex) {
+        this.applyActorOverrides();
+        this.refreshBitmap();
+      }
+
+      if (this._body.bitmap && this._body.bitmap.isReady() && this._needsFrameUpdate) {
+        this._needsFrameUpdate = false;
+        this.updateFrame();
+      }
+
+      // Keep icon bound to battler
+      if (SHOW_STATE_ICONS) this._stateIcon.setup(this._actor);
+
+      if (IDLE_ANIM) this.updateIdleAnim();
+      this.updateDamageFlash();
+      this.updateShake();
+      this.updateMove();
+      this.updateFade();
+      this.updateVisualPosition();
+    }
+
+    updateIdleAnim() {
+      this._animTick++;
+      if (this._animTick >= IDLE_SPEED) {
+        this._animTick = 0;
+        const seq = [1, 2, 1, 0];
+        const idx = seq.indexOf(this._pattern);
+        this._pattern = seq[(idx + 1) % seq.length];
+        this.updateFrame();
+      }
+    }
+
+    updateDamageFlash() {
+      if (this._flashFrames > 0) this._flashFrames--;
+    }
+
+    updateShake() {
+      if (this._shakeFrames > 0) {
+        this._shakeFrames--;
+        this._shakePhase += 0.6;
+      }
+    }
+
+    updateMove() {
+      if (!this._moveActive) return;
+      this._moveFrames--;
+      if (this._moveFrames <= 0) {
+        this._moveActive = false;
+        const cb = this._moveOnDone;
+        this._moveOnDone = null;
+        if (cb) cb();
+      }
+    }
+
+    updateFade() {
+      if (this._fadeFrames > 0) {
+        this._fadeFrames--;
+        if (this._fadeFrames <= 0) {
+          this._body.opacity = 0;
+          this._shadow.opacity = 0;
+          this._stateIcon.opacity = 0;
+        }
+      }
+    }
+
+    updateVisualPosition() {
+      let x = this._baseX + this._offsetX;
+      let y = this._baseY + this._offsetY;
+
+      if (this._moveActive) {
+        const t = 1 - this._moveFrames / this._moveTotal;
+        x = this._moveFrom.x + (this._moveTo.x - this._moveFrom.x) * t;
+        y = this._moveFrom.y + (this._moveTo.y - this._moveFrom.y) * t;
+      }
+
+      if (this._highlighted) {
+        this._highlightPhase += 0.15;
+        y -= Math.sin(this._highlightPhase) * H_BOUNCE;
+      }
+
+      if (this._shakeFrames > 0 && this._shakePower > 0) {
+        x += Math.sin(this._shakePhase) * this._shakePower;
+      }
+
+      this.x = x;
+      this.y = y;
+
+      if (this._highlighted) this._body.setColorTone([0, 0, 0, H_TINT]);
+      else this._body.setColorTone([0, 0, 0, 0]);
+
+      if (this._flashFrames > 0) this._body.setBlendColor([255, 255, 255, 160]);
+      else this._body.setBlendColor([0, 0, 0, 0]);
+
+      if (this._fadeFrames > 0) {
+        const t = this._fadeFrames / this._fadeTotal;
+        this._body.opacity = Math.floor(255 * t);
+        this._shadow.opacity = Math.floor(SHADOW_OPACITY * t);
+        this._stateIcon.opacity = Math.floor(255 * t);
+      } else if (!this._actor.isDead()) {
+        this._body.opacity = 255;
+        this._shadow.opacity = SHADOW_OPACITY;
+        this._stateIcon.opacity = 255;
+      }
+
+      this._shadow.visible = SHADOW_ENABLED;
+      this._stateIcon.visible = SHOW_STATE_ICONS;
+    }
+
+    // --- Frame calculations ---
+    updateFrame() {
+      const bmp = this._body.bitmap;
+      if (!bmp) return;
+
+      const pw = this.patternWidth();
+      const ph = this.patternHeight();
+
+      const sx = (this.characterBlockX() + this.characterPatternX()) * pw;
+      const sy = (this.characterBlockY() + this.characterPatternY()) * ph;
+
+      this._body.setFrame(sx, sy, pw, ph);
+    }
+
+    patternWidth() {
+      const bmp = this._body.bitmap;
+      if (!bmp) return 0;
+      return this._isBigCharacter ? bmp.width / 3 : bmp.width / 12;
+    }
+
+    patternHeight() {
+      const bmp = this._body.bitmap;
+      if (!bmp) return 0;
+      return this._isBigCharacter ? bmp.height / 4 : bmp.height / 8;
+    }
+
+    characterBlockX() {
+      if (this._isBigCharacter) return 0;
+      return (this._characterIndex % 4) * 3;
+    }
+
+    characterBlockY() {
+      if (this._isBigCharacter) return 0;
+      return Math.floor(this._characterIndex / 4) * 4;
+    }
+
+    characterPatternX() { return this._pattern; }
+
+    characterPatternY() {
+      return this._direction / 2 - 1;
+    }
+  }
+
+  // ---- Scene_Battle integration ----
+  const _Scene_Battle_createSpriteset = Scene_Battle.prototype.createSpriteset;
+  Scene_Battle.prototype.createSpriteset = function () {
+    _Scene_Battle_createSpriteset.call(this);
+    if ($gameSystem.isSideView()) return;
+    this._createFrontViewActorCharsetLayer();
+  };
+
+  Scene_Battle.prototype._createFrontViewActorCharsetLayer = function () {
+    this._frontViewActorCharsetLayer = new Sprite();
+    this.addChild(this._frontViewActorCharsetLayer);
+
+    this._frontViewActorCharsetSprites = [];
+    this._refreshFrontViewActorCharsetSprites();
+  };
+
+  Scene_Battle.prototype._getAnchorPoint = function () {
+    const w = Graphics.boxWidth;
+    const h = Graphics.boxHeight;
+
+    if (ANCHOR === "Custom") return { x: CUSTOM_X, y: CUSTOM_Y };
+
+    if (ANCHOR === "AboveStatusWindow" && this._statusWindow) {
+      return { x: w / 2, y: this._statusWindow.y - 8 };
+    }
+
+    const y = h - 48;
+    if (ANCHOR === "BottomLeft") return { x: 120, y };
+    if (ANCHOR === "BottomRight") return { x: w - 120, y };
+    return { x: w / 2, y };
+  };
+
+  Scene_Battle.prototype._decideFormation = function (n) {
+    if (FORMATION !== "Auto") return FORMATION;
+    if (n <= 3) return "Line";
+    if (n <= 6) return "Grid";
+    return "Column";
+  };
+
+  Scene_Battle.prototype._computePositions = function (n) {
+    const anchor = this._getAnchorPoint();
+    const form = this._decideFormation(n);
+    const positions = [];
+    if (n <= 0) return positions;
+
+    if (form === "Column") {
+      const totalH = (n - 1) * SPY;
+      const startY = CENTER_ALIGN ? anchor.y - totalH / 2 : anchor.y;
+      for (let i = 0; i < n; i++) positions.push({ x: anchor.x, y: startY + i * SPY });
+      return positions;
+    }
+
+    if (form === "Grid") {
+      const cols = Math.max(1, GRID_COLS);
+      const rows = Math.ceil(n / cols);
+
+      const totalW = (Math.min(cols, n) - 1) * SPX;
+      const totalH = (rows - 1) * SPY;
+
+      const startX = CENTER_ALIGN ? anchor.x - totalW / 2 : anchor.x;
+      const startY = CENTER_ALIGN ? anchor.y - totalH / 2 : anchor.y;
+
+      for (let i = 0; i < n; i++) {
+        const c = i % cols;
+        const r = Math.floor(i / cols);
+        positions.push({ x: startX + c * SPX, y: startY + r * SPY });
+      }
+      return positions;
+    }
+
+    // Line
+    const totalW = (n - 1) * SPX;
+    const startX = CENTER_ALIGN ? anchor.x - totalW / 2 : anchor.x;
+    for (let i = 0; i < n; i++) positions.push({ x: startX + i * SPX, y: anchor.y });
+    return positions;
+  };
+
+  Scene_Battle.prototype._refreshFrontViewActorCharsetSprites = function () {
+    if (!this._frontViewActorCharsetLayer) return;
+
+    this._frontViewActorCharsetLayer.removeChildren();
+    this._frontViewActorCharsetSprites = [];
+
+    const members = $gameParty.battleMembers();
+    const positions = this._computePositions(members.length);
+
+    for (let i = 0; i < members.length; i++) {
+      const actor = members[i];
+      const spr = new Sprite_ActorCharsetBattle(actor);
+      const pos = positions[i] || { x: 0, y: 0 };
+      spr.setBasePosition(pos.x, pos.y);
+      this._frontViewActorCharsetLayer.addChild(spr);
+      this._frontViewActorCharsetSprites.push(spr);
+    }
+  };
+
+  Scene_Battle.prototype.frontViewSpriteForActor = function (actor) {
+    const arr = this._frontViewActorCharsetSprites;
+    if (!arr) return null;
+    return arr.find(s => s.actor() === actor) || null;
+  };
+
+  // Highlight: commanding actor OR actor-window selection
+  const _Scene_Battle_update = Scene_Battle.prototype.update;
+  Scene_Battle.prototype.update = function () {
+    _Scene_Battle_update.call(this);
+    if ($gameSystem.isSideView()) return;
+    this._updateFrontViewHighlights();
+  };
+
+  Scene_Battle.prototype._updateFrontViewHighlights = function () {
+    const sprites = this._frontViewActorCharsetSprites;
+    if (!sprites || sprites.length === 0) return;
+
+    let highlightActor = null;
+    if (this._actorWindow && this._actorWindow.active) {
+      highlightActor = this._actorWindow.actor();
+    } else {
+      highlightActor = BattleManager.actor();
+    }
+
+    for (const s of sprites) s.setHighlighted(highlightActor && s.actor() === highlightActor);
+  };
+
+  // Refresh on swap
+  const _Game_Party_swapOrder = Game_Party.prototype.swapOrder;
+  Game_Party.prototype.swapOrder = function (index1, index2) {
+    _Game_Party_swapOrder.call(this, index1, index2);
+    const sc = SceneManager._scene;
+    if (sc && sc instanceof Scene_Battle && sc._frontViewActorCharsetLayer) {
+      sc._refreshFrontViewActorCharsetSprites();
+    }
+  };
+
+  // Refresh at battle start (status window positions exist)
+  const _Scene_Battle_start = Scene_Battle.prototype.start;
+  Scene_Battle.prototype.start = function () {
+    _Scene_Battle_start.call(this);
+    if ($gameSystem.isSideView()) return;
+    if (this._frontViewActorCharsetLayer) this._refreshFrontViewActorCharsetSprites();
+  };
+
+  // ---- Hooks for hit reactions + attack motion ----
+  function spriteForBattler(battler) {
+    const sc = SceneManager._scene;
+    if (!sc || !(sc instanceof Scene_Battle)) return null;
+    if ($gameSystem.isSideView()) return null;
+    if (!battler || !battler.isActor || !battler.isActor()) return null;
+    return sc.frontViewSpriteForActor(battler);
+  }
+
+  const _Window_BattleLog_displayDamage = Window_BattleLog.prototype.displayDamage;
+  Window_BattleLog.prototype.displayDamage = function (target) {
+    _Window_BattleLog_displayDamage.call(this, target);
+
+    const spr = spriteForBattler(target);
+    if (spr) {
+      const r = target.result ? target.result() : null;
+      const didHit = r ? (!r.missed && !r.evaded) : true;
+      if (didHit) spr.playDamageReaction();
+      if (target.isDead && target.isDead()) spr.playDeathFade();
+    }
+  };
+
+  const _Window_BattleLog_startAction = Window_BattleLog.prototype.startAction;
+  Window_BattleLog.prototype.startAction = function (subject, action, targets) {
+    _Window_BattleLog_startAction.call(this, subject, action, targets);
+
+    const spr = spriteForBattler(subject);
+    if (spr && action && action.isAttack && action.isAttack()) {
+      spr.playAttackHop();
+    }
+  };
+
+})();
