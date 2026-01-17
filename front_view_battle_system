@@ -1,14 +1,15 @@
 /*:
  * @target MZ
- * @plugindesc change front view battle system to allow custome front view from standard mz battle system
+ * @plugindesc front view battle system
  * @author Christopher Ross
  *
  * @help
  * FrontViewActorsCharsetBattle.js
  *
- * - State icons above actors (Front View)
- * - Filter icons to IMPORTANT state IDs only
- * - Color pulse per state type (by state ID)
+ * v3.2.1 adds/fixes:
+ * - IMPORTANT state icons + color pulse (per actor)
+ * - Fix: pulse/flash no longer "sticks" to actors without the state
+ * - Fix: do NOT call stateIcon.setup() every frame (prevents bleed/reset bugs)
  *
  * Actor Notetags (Actor note):
  *   <BattleCharName: Actor2>
@@ -184,7 +185,6 @@
  * @text Important State IDs (comma list)
  * @type string
  * @default 4,8,10,12,13
- * @desc Poison(4), Confusion(8), Sleep(10), Paralysis(12), Stun(13)
  *
  * @param StatePulseEnabled
  * @text State Icon Color Pulse
@@ -195,7 +195,6 @@
  * @text State Pulse Map (ID:color)
  * @type string
  * @default 4:#00ff66,8:#aa66ff,10:#66aaff,12:#ffff66,13:#ffd200
- * @desc Example: 4:#00ff66,13:#ffd200
  *
  * @param StatePulseSpeed
  * @text State Pulse Speed
@@ -319,13 +318,14 @@
   }
 
   // ---------------------------------------------------------
-  // IMPORTANT STATE ICON (only affects our battle sprites)
+  // IMPORTANT STATE ICON (per actor, no bleed)
   // ---------------------------------------------------------
   class Sprite_ImportantStateIcon extends Sprite_StateIcon {
     constructor() {
       super();
       this._currentStateIdForIcon = 0;
       this._pulsePhase = 0;
+      this._lastImportantKey = "";
     }
 
     updateIcon() {
@@ -333,6 +333,11 @@
       if (!battler) {
         this._iconIndex = 0;
         this._currentStateIdForIcon = 0;
+        this._animationIndex = 0;
+        this._animationCount = 0;
+        this._pulsePhase = 0;
+        this._lastImportantKey = "";
+        this.setBlendColor([0, 0, 0, 0]);
         return;
       }
 
@@ -345,6 +350,25 @@
         }
       }
 
+      const key = list.map(e => e.stateId).join(",");
+      if (key !== this._lastImportantKey) {
+        this._lastImportantKey = key;
+        this._animationIndex = 0;
+        this._animationCount = 0;
+        this._pulsePhase = 0;
+
+        if (list.length === 0) {
+          this._iconIndex = 0;
+          this._currentStateIdForIcon = 0;
+          this.setBlendColor([0, 0, 0, 0]);
+          return;
+        } else {
+          this._iconIndex = list[0].iconIndex;
+          this._currentStateIdForIcon = list[0].stateId;
+          return;
+        }
+      }
+
       if (list.length > 0) {
         this._animationCount++;
         if (this._animationCount >= this.animationWait()) {
@@ -353,10 +377,16 @@
           this._iconIndex = item.iconIndex;
           this._currentStateIdForIcon = item.stateId;
           this._animationIndex++;
+          this._pulsePhase = 0;
         }
       } else {
         this._iconIndex = 0;
         this._currentStateIdForIcon = 0;
+        this._animationIndex = 0;
+        this._animationCount = 0;
+        this._pulsePhase = 0;
+        this._lastImportantKey = "";
+        this.setBlendColor([0, 0, 0, 0]);
       }
     }
 
@@ -368,21 +398,29 @@
         return;
       }
 
+      const battler = this._battler;
       const stateId = this._currentStateIdForIcon || 0;
+
+      // CRITICAL: only pulse if THIS battler still has THIS state
+      if (!battler || !stateId || !battler.isStateAffected(stateId) || !this._iconIndex) {
+        this.setBlendColor([0, 0, 0, 0]);
+        return;
+      }
+
       const col = STATE_PULSE_MAP.get(stateId);
-      if (!col || !this._iconIndex) {
+      if (!col) {
         this.setBlendColor([0, 0, 0, 0]);
         return;
       }
 
       this._pulsePhase += (Math.PI * 2) / STATE_PULSE_SPEED;
-      const wave = (Math.sin(this._pulsePhase) + 1) / 2; // 0..1
+      const wave = (Math.sin(this._pulsePhase) + 1) / 2;
       const a = Math.floor(wave * STATE_PULSE_STRENGTH);
       this.setBlendColor([col.r, col.g, col.b, a]);
     }
   }
 
-  // ---- Sprite: container + body charset sprite + shadow (under) + icon ----
+  // ---- Sprite: container + body charset sprite + shadow (under) + important icon ----
   class Sprite_ActorCharsetBattle extends Sprite {
     constructor(actor) {
       super();
@@ -443,7 +481,7 @@
       this._body.anchor.set(0.5, 1.0);
       this.addChild(this._body);
 
-      // State Icon (important only)
+      // IMPORTANT STATE ICON (setup ONCE, NOT every frame)
       this._stateIcon = new Sprite_ImportantStateIcon();
       this._stateIcon.x = STATE_ICON_OX;
       this._stateIcon.y = STATE_ICON_OY;
@@ -584,9 +622,7 @@
         this.updateFrame();
       }
 
-      // Keep icon bound to battler
-      if (SHOW_STATE_ICONS) this._stateIcon.setup(this._actor);
-
+      // NOTE: do NOT call this._stateIcon.setup(this._actor) here (fixes bleed)
       if (IDLE_ANIM) this.updateIdleAnim();
       this.updateDamageFlash();
       this.updateShake();
@@ -606,9 +642,7 @@
       }
     }
 
-    updateDamageFlash() {
-      if (this._flashFrames > 0) this._flashFrames--;
-    }
+    updateDamageFlash() { if (this._flashFrames > 0) this._flashFrames--; }
 
     updateShake() {
       if (this._shakeFrames > 0) {
@@ -682,7 +716,6 @@
       this._stateIcon.visible = SHOW_STATE_ICONS;
     }
 
-    // --- Frame calculations ---
     updateFrame() {
       const bmp = this._body.bitmap;
       if (!bmp) return;
@@ -719,10 +752,7 @@
     }
 
     characterPatternX() { return this._pattern; }
-
-    characterPatternY() {
-      return this._direction / 2 - 1;
-    }
+    characterPatternY() { return this._direction / 2 - 1; }
   }
 
   // ---- Scene_Battle integration ----
@@ -795,7 +825,6 @@
       return positions;
     }
 
-    // Line
     const totalW = (n - 1) * SPX;
     const startX = CENTER_ALIGN ? anchor.x - totalW / 2 : anchor.x;
     for (let i = 0; i < n; i++) positions.push({ x: startX + i * SPX, y: anchor.y });
@@ -859,7 +888,7 @@
     }
   };
 
-  // Refresh at battle start (status window positions exist)
+  // Refresh at battle start
   const _Scene_Battle_start = Scene_Battle.prototype.start;
   Scene_Battle.prototype.start = function () {
     _Scene_Battle_start.call(this);
